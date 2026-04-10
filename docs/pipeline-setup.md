@@ -1,6 +1,6 @@
 # Pipeline Setup
 
-The ingestion pipeline converts any supported document into Markdown the moment it lands in a OneDrive folder, saves the result to the knowledge base intake folder, and moves the original to an archive. It runs as a macOS background service — no manual steps required after initial setup.
+The ingestion pipeline watches a folder for new files, converts them to Markdown, saves them to the knowledge base intake folder, and moves the original to an archive. It runs as a macOS background service — no manual steps required after setup.
 
 ---
 
@@ -19,14 +19,14 @@ watcher.sh runs security checks:
     ↓
 markitdown converts the file to Markdown
     ↓
-.md saved to knowhow/raw/
+.md saved to knowledge-base/raw/
     ↓
-original moved to Library/ (OneDrive archive)
+original moved to archive/
     ↓
 ready for /odcus-kb-compile
 ```
 
-The watcher runs continuously as a launchd service — it starts on login, stays running, and restarts automatically if it crashes.
+The watcher runs continuously as a launchd service — starts on login, stays running, restarts automatically if it crashes.
 
 ---
 
@@ -34,41 +34,46 @@ The watcher runs continuously as a launchd service — it starts on login, stays
 
 **macOS** — the pipeline uses `launchd` for service management and `fswatch` for file watching. Linux would need systemd and inotifywait instead.
 
-**Homebrew** — for installing fswatch:
+**Homebrew**
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-**uv / uvx** — for running markitdown without a permanent install:
+**uv / uvx** — runs markitdown without a permanent install
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Verify both are working:
+**fswatch**
 ```bash
-which fswatch        # should return a path
-uvx markitdown --help  # should print usage
+brew install fswatch
+```
+
+Verify both:
+```bash
+which fswatch
+uvx markitdown --help
 ```
 
 ---
 
 ## Folder setup
 
-You need three folders:
+You need three locations:
 
-| Folder | Role | Where |
-|--------|------|-------|
-| Drop zone | You put files here | Shared OneDrive |
-| Intake | Converted `.md` files appear here | Obsidian vault / iCloud |
-| Archive | Originals moved here after conversion | Shared OneDrive |
+| Location | Role |
+|----------|------|
+| **Drop zone** | Where you put files to be processed |
+| **Raw intake** | Where converted `.md` files are saved |
+| **Archive** | Where originals are moved after conversion |
 
-The drop zone and archive can be any folder — local, OneDrive, Dropbox. The intake folder should be inside your Obsidian vault so it syncs via iCloud and stays accessible across devices.
+These can be local folders, cloud-synced folders (OneDrive, Dropbox), or a mix. The raw intake should live inside a folder that syncs to your other devices — typically your Obsidian vault.
 
-Make sure all three folders exist before running the setup:
+Create all three before running setup:
 
 ```bash
 mkdir -p "/path/to/drop-zone"
-mkdir -p "/path/to/knowhow/raw"
+mkdir -p "/path/to/knowledge-base/raw"
 mkdir -p "/path/to/archive"
 ```
 
@@ -80,25 +85,32 @@ mkdir -p "/path/to/archive"
 
 ```bash
 mkdir -p ~/.local/bin
-cp pipeline/watcher.sh ~/.local/bin/odcus-knowhow-watcher.sh
-chmod +x ~/.local/bin/odcus-knowhow-watcher.sh
+cp pipeline/watcher.sh ~/.local/bin/knowhow-watcher.sh
+chmod +x ~/.local/bin/knowhow-watcher.sh
 ```
 
 Open the script and set the three path variables at the top:
 
 ```bash
 WATCH_DIR="/path/to/your/drop-zone"
-OUTPUT_DIR="/path/to/your/knowhow/raw"
+OUTPUT_DIR="/path/to/your/knowledge-base/raw"
 ARCHIVE_DIR="/path/to/your/archive"
 ```
 
-Use absolute paths. Do not use `~` — launchd doesn't expand it.
+Use absolute paths. Do not use `~` — launchd does not expand it.
 
-Example (OneDrive + iCloud):
+**Example with iCloud + OneDrive:**
 ```bash
-WATCH_DIR="/Users/yourname/Library/CloudStorage/OneDrive-SharedLibraries-Company/Company - General/Knowledge Process"
-OUTPUT_DIR="/Users/yourname/Library/Mobile Documents/iCloud~md~obsidian/Documents/Vault/knowhow/raw"
-ARCHIVE_DIR="/Users/yourname/Library/CloudStorage/OneDrive-SharedLibraries-Company/Company - General/Library"
+WATCH_DIR="/Users/yourname/Library/CloudStorage/OneDrive-Company/Shared/incoming"
+OUTPUT_DIR="/Users/yourname/Library/Mobile Documents/iCloud~md~obsidian/Documents/Vault/knowledge-base/raw"
+ARCHIVE_DIR="/Users/yourname/Library/CloudStorage/OneDrive-Company/Shared/archive"
+```
+
+**Example with local folders only:**
+```bash
+WATCH_DIR="/Users/yourname/Documents/kb-incoming"
+OUTPUT_DIR="/Users/yourname/Documents/knowledge-base/raw"
+ARCHIVE_DIR="/Users/yourname/Documents/kb-archive"
 ```
 
 ### Step 2 — Configure the launchd service
@@ -107,16 +119,11 @@ ARCHIVE_DIR="/Users/yourname/Library/CloudStorage/OneDrive-SharedLibraries-Compa
 cp pipeline/com.odcus.knowhow-watcher.plist ~/Library/LaunchAgents/
 ```
 
-Open `~/Library/LaunchAgents/com.odcus.knowhow-watcher.plist` and update the username in the script path:
+Open the plist and replace `YOUR_USERNAME` with your macOS username in all three places:
 
-```xml
-<string>/Users/yourname/.local/bin/odcus-knowhow-watcher.sh</string>
-```
-
-Also update the log paths:
-
-```xml
-<string>/Users/yourname/.local/logs/odcus-knowhow-watcher.log</string>
+```bash
+# Quick replace (substitute yourname)
+sed -i '' 's/YOUR_USERNAME/yourname/g' ~/Library/LaunchAgents/com.odcus.knowhow-watcher.plist
 ```
 
 ### Step 3 — Create the log directory
@@ -137,48 +144,42 @@ launchctl load ~/Library/LaunchAgents/com.odcus.knowhow-watcher.plist
 launchctl list | grep odcus
 ```
 
-The first column is the PID. A number (not a dash) means the process is running:
+A number in the first column means the process is running:
 
 ```
 73463   0   com.odcus.knowhow-watcher
 ```
 
-Check the log to confirm the watcher started:
+Check the log:
 
 ```bash
-tail ~/.local/logs/odcus-knowhow-watcher.log
-```
-
-You should see:
-```
-[2026-04-10 14:23:01] Watcher started. Watching: /path/to/drop-zone
+tail ~/.local/logs/knowhow-watcher.log
+# Expected: [2026-04-10 14:23:01] Watcher started. Watching: /path/to/drop-zone
 ```
 
 ---
 
 ## Testing
 
-Drop a supported file into the watch folder and observe the log:
+Drop a supported file into the drop zone and watch the log:
 
 ```bash
-tail -f ~/.local/logs/odcus-knowhow-watcher.log
+tail -f ~/.local/logs/knowhow-watcher.log
 ```
 
-Within a few seconds you should see:
+Within a few seconds:
 
 ```
 [2026-04-10 14:25:03] Processing: report.pdf (1243891 bytes)
-[2026-04-10 14:25:07] Saved markdown: /path/to/knowhow/raw/report.md
-[2026-04-10 14:25:07] Moved original to Library: report.pdf
+[2026-04-10 14:25:07] Saved markdown: /path/to/knowledge-base/raw/report.md
+[2026-04-10 14:25:07] Moved original to archive: report.pdf
 ```
 
-Check that `report.md` appeared in `knowhow/raw/` and that `report.pdf` is now in `Library/`.
+Confirm `report.md` is in `knowledge-base/raw/` and `report.pdf` is in the archive.
 
 ---
 
 ## Supported file types
-
-The following extensions are on the allowlist. All others are skipped with a log entry.
 
 | Extension | Format |
 |-----------|--------|
@@ -191,7 +192,7 @@ The following extensions are on the allowlist. All others are skipped with a log
 | `md` | Markdown (pass-through) |
 | `csv` | Comma-separated values |
 
-To add more types, edit the `ALLOWED_EXTENSIONS` array in `watcher.sh`:
+To add more types, edit `ALLOWED_EXTENSIONS` in `watcher.sh`:
 
 ```bash
 ALLOWED_EXTENSIONS=("pdf" "docx" "pptx" "xlsx" "txt" "html" "md" "csv" "epub")
@@ -201,15 +202,13 @@ ALLOWED_EXTENSIONS=("pdf" "docx" "pptx" "xlsx" "txt" "html" "md" "csv" "epub")
 
 ## After a file is converted
 
-The converted `.md` file lands in `knowhow/raw/` with the same filename (minus the original extension). From there, the file needs to be curated into the structured wiki by running the compile skill in Claude Code:
+The `.md` file lands in `knowledge-base/raw/`. From there, run the compile skill in Claude Code to integrate it into the structured wiki:
 
 ```
 /odcus-kb-compile
 ```
 
-Claude reads all new files in `raw/`, determines which discipline each belongs to, and either creates a new article or merges the information into an existing one. It then updates `_index.md`.
-
-Run this after adding a batch of files — there's no need to compile after every single drop.
+Claude reads all new files in `raw/`, routes them to the right discipline folder, merges information into existing articles, and updates the master index.
 
 ---
 
@@ -219,10 +218,10 @@ Run this after adding a batch of files — there's no need to compile after ever
 # Check status
 launchctl list | grep odcus
 
-# Stop the service
+# Stop
 launchctl unload ~/Library/LaunchAgents/com.odcus.knowhow-watcher.plist
 
-# Start the service
+# Start
 launchctl load ~/Library/LaunchAgents/com.odcus.knowhow-watcher.plist
 
 # Restart (required after editing watcher.sh)
@@ -230,52 +229,39 @@ launchctl unload ~/Library/LaunchAgents/com.odcus.knowhow-watcher.plist
 launchctl load ~/Library/LaunchAgents/com.odcus.knowhow-watcher.plist
 ```
 
-The service is configured with `KeepAlive: true` — if the script crashes, launchd restarts it automatically.
-
 ---
 
 ## Logs
 
 ```bash
-# Stream live
-tail -f ~/.local/logs/odcus-knowhow-watcher.log
-
-# Last 20 lines
-tail -20 ~/.local/logs/odcus-knowhow-watcher.log
+tail -f ~/.local/logs/knowhow-watcher.log   # stream live
+tail -20 ~/.local/logs/knowhow-watcher.log  # last 20 lines
 ```
 
-Log entries:
-
-| Entry | Meaning |
-|-------|---------|
-| `Watcher started` | Service launched successfully |
+| Log entry | Meaning |
+|-----------|---------|
+| `Watcher started` | Service launched |
 | `Processing: file.pdf` | Conversion started |
 | `Saved markdown: file.md` | Conversion succeeded |
-| `Moved original to Library` | Original archived |
-| `SKIP symlink` | File was a symlink — rejected |
+| `Moved original to archive` | Original archived |
+| `SKIP symlink` | Symlink rejected |
 | `SKIP unsupported extension` | Extension not on allowlist |
-| `SKIP too large` | File exceeds 100 MB cap |
-| `SKIP path escape` | Resolved path outside watch dir — rejected |
-| `ERROR: Conversion failed` | markitdown returned an error |
+| `SKIP too large` | File over 100 MB |
+| `SKIP path escape` | Resolved path outside watch dir |
+| `ERROR: Conversion failed` | markitdown error |
 
-The log rotates automatically when it exceeds 10 MB (renamed to `.log.old`).
+Log rotates automatically at 10 MB.
 
 ---
 
 ## Security
 
-The drop zone is a shared OneDrive folder. This means any OneDrive collaborator with write access can drop files that trigger processing on your local machine. The watcher defends against the main attack vectors:
+**Symlink attacks** — a symlink in the drop zone could point to any file on your machine. The watcher rejects all symlinks immediately and re-checks after the 2-second wait.
 
-**Symlink attacks**
-A malicious actor drops a symlink pointing to `~/.ssh/id_rsa`. Without protection, the script would read and convert that file to Markdown, potentially exposing it via iCloud sync. The watcher rejects all symlinks immediately — both on detection and again after the 2-second wait (in case of a symlink swap).
+**Path traversal** — `realpath` resolves the actual path before processing. Anything resolving outside `WATCH_DIR/` is rejected.
 
-**Path traversal**
-A filename like `../../.ssh/config` could resolve to a path outside the watch directory. The watcher uses `realpath` to resolve the actual path and rejects anything that doesn't remain inside `WATCH_DIR/`.
+**Oversized files** — files over 100 MB are skipped.
 
-**Oversized files**
-A 4 GB file would consume significant memory during conversion. The watcher skips files over 100 MB.
+**Unsupported types** — only allowlisted extensions are processed.
 
-**Unsupported types**
-Executable files, scripts, and other formats are not on the allowlist. They are skipped and logged.
-
-**Recommendation:** If multiple people have write access to the OneDrive drop folder, treat it as a semi-trusted input surface. Review the allowlist and consider who has access before enabling.
+If your drop zone is a shared folder (team OneDrive, shared Dropbox), anyone with write access can trigger processing. Review who has access and adjust the allowlist accordingly.

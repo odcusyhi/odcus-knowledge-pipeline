@@ -9,7 +9,8 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
-    <string>/Users/yannickhirt/.local/bin/odcus-knowhow-watcher.sh</string>
+    <!-- Update this path to match where you copied watcher.sh -->
+    <string>/Users/YOUR_USERNAME/.local/bin/knowhow-watcher.sh</string>
   </array>
 
   <key>RunAtLoad</key>
@@ -18,18 +19,20 @@
   <key>KeepAlive</key>
   <true/>
 
+  <!-- Update these paths to match your username -->
   <key>StandardOutPath</key>
-  <string>/Users/yannickhirt/.local/logs/odcus-knowhow-watcher.log</string>
+  <string>/Users/YOUR_USERNAME/.local/logs/knowhow-watcher.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/yannickhirt/.local/logs/odcus-knowhow-watcher.log</string>
+  <string>/Users/YOUR_USERNAME/.local/logs/knowhow-watcher.log</string>
 
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     <key>HOME</key>
-    <string>/Users/yannickhirt</string>
+    <!-- Update this to your home directory -->
+    <string>/Users/YOUR_USERNAME</string>
   </dict>
 </dict>
 </plist>

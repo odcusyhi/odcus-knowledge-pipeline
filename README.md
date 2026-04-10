@@ -24,8 +24,8 @@ The result: a knowledge base that grows with every document you add, and that Cl
 ┌─────────────────────────────────────────────────────────┐
 │                     INPUT LAYER                         │
 │                                                         │
-│  Drop any file into:                                    │
-│  OneDrive → ODCUS General → Knowledge Process/         │
+│  Drop any file into your designated drop zone           │
+│  (local folder, OneDrive, Dropbox — your choice)        │
 │                                                         │
 │  Supported: PDF, DOCX, PPTX, XLSX, HTML, TXT, CSV, MD  │
 └─────────────────────┬───────────────────────────────────┘
@@ -38,8 +38,8 @@ The result: a knowledge base that grows with every document you add, and that Cl
 │                                                         │
 │  1. Validates file (type, size, no symlinks)            │
 │  2. Converts to Markdown via markitdown (Microsoft)     │
-│  3. Saves .md to knowhow/raw/                           │
-│  4. Moves original to Library/ (OneDrive archive)       │
+│  3. Saves .md to knowledge-base/raw/                    │
+│  4. Moves original to archive folder                    │
 └─────────────────────┬───────────────────────────────────┘
                       │ .md file in raw/
                       ▼
@@ -54,9 +54,9 @@ The result: a knowledge base that grows with every document you add, and that Cl
 │  - Updates the master index                             │
 │  - Flags gaps and contradictions                        │
 │                                                         │
-│  knowhow/                                               │
-│    cyber/        compliance/     finops/                │
-│    sourcing/     modernization/  ai/    managed/        │
+│  knowledge-base/                                        │
+│    cyber/   compliance/   finops/                       │
+│    sourcing/   modernization/   ai/   managed/          │
 └─────────────────────┬───────────────────────────────────┘
                       │ structured .md articles
                       ▼
@@ -92,33 +92,37 @@ The result: a knowledge base that grows with every document you add, and that Cl
 
 ---
 
-## Folder layout
+## Reference folder layout
+
+Adapt these paths to your own environment. The three locations that matter are: drop zone, raw intake, and archive.
 
 ```
-OneDrive (shared)
-├── Knowledge Process/    ← drop files here
-└── Library/              ← originals archived here after conversion
+Drop zone (any synced or local folder)
+├── incoming/         ← drop files here
+└── archive/          ← originals moved here after conversion
 
-Obsidian vault (iCloud)
-└── 02-operations/knowhow/
-    ├── raw/              ← converted .md files land here
-    ├── cyber/            ← curated wiki: cybersecurity
-    ├── compliance/       ← curated wiki: compliance & regulation
-    ├── finops/           ← curated wiki: cloud cost management
-    ├── sourcing/         ← curated wiki: vendor & procurement
-    ├── modernization/    ← curated wiki: legacy & cloud migration
-    ├── ai/               ← curated wiki: AI adoption & governance
-    ├── managed/          ← curated wiki: managed services
-    ├── references/       ← source PDFs and reference files
-    └── _index.md         ← master index, auto-maintained
+Knowledge base (Obsidian vault or any folder)
+└── knowledge-base/
+    ├── raw/          ← converted .md files land here
+    ├── cyber/        ← curated wiki: cybersecurity
+    ├── compliance/   ← curated wiki: compliance & regulation
+    ├── finops/       ← curated wiki: cloud cost management
+    ├── sourcing/     ← curated wiki: vendor & procurement
+    ├── modernization/← curated wiki: legacy & cloud migration
+    ├── ai/           ← curated wiki: AI adoption & governance
+    ├── managed/      ← curated wiki: managed services
+    ├── references/   ← source PDFs and reference files
+    └── _index.md     ← master index, auto-maintained
 ```
+
+The drop zone and archive can be the same cloud storage provider, or entirely separate. The knowledge base should live somewhere that syncs across devices (iCloud, Dropbox, etc.) so it's accessible wherever you run Claude Code.
 
 ---
 
 ## Day-to-day usage
 
 **Adding knowledge:**
-1. Drop a file into `OneDrive → Knowledge Process/`
+1. Drop a file into your drop zone
 2. Wait a few seconds — it converts automatically
 3. Open Claude Code, run `/odcus-kb-compile`
 4. Done. The article is in the wiki and searchable.
@@ -165,20 +169,21 @@ brew install fswatch
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 2. Copy and configure the watcher script
-cp pipeline/watcher.sh ~/.local/bin/odcus-knowhow-watcher.sh
-chmod +x ~/.local/bin/odcus-knowhow-watcher.sh
+mkdir -p ~/.local/bin
+cp pipeline/watcher.sh ~/.local/bin/knowhow-watcher.sh
+chmod +x ~/.local/bin/knowhow-watcher.sh
 # Edit WATCH_DIR, OUTPUT_DIR, ARCHIVE_DIR at the top of the script
 
 # 3. Install the background service
 cp pipeline/com.odcus.knowhow-watcher.plist ~/Library/LaunchAgents/
-# Edit paths in the plist to match your username
+# Replace YOUR_USERNAME with your macOS username in the plist
 launchctl load ~/Library/LaunchAgents/com.odcus.knowhow-watcher.plist
 
 # 4. Configure QMD (see docs/qmd-setup.md)
 
 # 5. Verify
-launchctl list | grep odcus          # should show a PID
-tail -f ~/.local/logs/odcus-knowhow-watcher.log  # watch for activity
+launchctl list | grep odcus
+tail -f ~/.local/logs/knowhow-watcher.log
 ```
 
 Full instructions: [docs/pipeline-setup.md](docs/pipeline-setup.md)

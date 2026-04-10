@@ -1,10 +1,12 @@
 #!/bin/zsh
 
-WATCH_DIR="/Users/yannickhirt/Library/CloudStorage/OneDrive-SharedLibraries-ODCUS/ODCUS - General/Knowledge Process"
-OUTPUT_DIR="/Users/yannickhirt/Library/Mobile Documents/iCloud~md~obsidian/Documents/ODCUS/02-operations/knowhow/raw"
-ARCHIVE_DIR="/Users/yannickhirt/Library/CloudStorage/OneDrive-SharedLibraries-ODCUS/ODCUS - General/Library"
+# ─── Configure these three paths before running ───────────────────────────────
+WATCH_DIR="/path/to/your/drop-zone"         # folder to watch for new files
+OUTPUT_DIR="/path/to/your/knowledge-base/raw"  # where converted .md files are saved
+ARCHIVE_DIR="/path/to/your/archive"         # where originals are moved after conversion
+# ──────────────────────────────────────────────────────────────────────────────
 
-LOG="$HOME/.local/logs/odcus-knowhow-watcher.log"
+LOG="$HOME/.local/logs/knowhow-watcher.log"
 mkdir -p "$(dirname "$LOG")"
 
 ALLOWED_EXTENSIONS=("pdf" "docx" "pptx" "xlsx" "txt" "html" "md" "csv")
@@ -29,7 +31,7 @@ process_file() {
   # Skip directories
   [[ -d "$filepath" ]] && return
 
-  # Skip symlinks — prevents local file exfiltration via crafted OneDrive drops
+  # Skip symlinks — prevents local file exfiltration via crafted drops
   if [[ -L "$filepath" ]]; then
     log "SKIP symlink: $filename"
     return
@@ -82,7 +84,7 @@ process_file() {
   if uvx markitdown "$filepath" > "$output_file" 2>> "$LOG"; then
     log "Saved markdown: $output_file"
     mv "$filepath" "$ARCHIVE_DIR/$filename"
-    log "Moved original to Library: $filename"
+    log "Moved original to archive: $filename"
   else
     log "ERROR: Conversion failed for $filename"
     rm -f "$output_file"
