@@ -1,30 +1,34 @@
-# ODCUS Knowledge Pipeline
+# Knowledge Pipeline
 
-A self-maintaining knowledge base for consulting work — built on three connected ideas: AI as librarian, automatic document ingestion, and local semantic search. You drop files. The system handles everything else.
+An open-source architecture for a self-maintaining knowledge base — built on three connected ideas: AI as librarian, automatic document ingestion, and local semantic search.
+
+You drop files. The system converts, curates, and indexes them. Claude uses the knowledge base automatically in every session.
+
+Built and open-sourced by [ODCUS](https://www.odcus.com) — an IT advisory firm based in Switzerland.
 
 ---
 
-## The problem it solves
+## The idea
 
-Knowledge work produces enormous amounts of input: research papers, client presentations, industry reports, meeting notes, competitor materials, regulatory documents. The usual outcome is a graveyard of PDFs nobody searches, or a wiki nobody maintains.
+Knowledge work produces enormous input: research papers, client notes, industry reports, regulatory documents, competitor materials. The usual outcome is a graveyard of PDFs nobody searches, or a wiki nobody maintains.
 
 This system solves both problems:
 
 - **No manual filing** — drop a file, it gets converted and ingested automatically
-- **No manual wiki maintenance** — AI reads the raw material and updates structured articles
-- **No hunting for files** — Claude can search the knowledge base semantically in any session
+- **No manual wiki maintenance** — Claude reads raw material and updates structured articles
+- **No hunting for files** — Claude queries the knowledge base semantically in every session
 
-The result: a knowledge base that grows with every document you add, and that Claude can actually use without being pointed to specific files.
+The result: a knowledge base that grows with every document you add, and that Claude draws from without being pointed to specific files.
 
 ---
 
-## How it works
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                     INPUT LAYER                         │
 │                                                         │
-│  Drop any file into your designated drop zone           │
+│  Drop any file into your drop zone                      │
 │  (local folder, OneDrive, Dropbox — your choice)        │
 │                                                         │
 │  Supported: PDF, DOCX, PPTX, XLSX, HTML, TXT, CSV, MD  │
@@ -34,7 +38,7 @@ The result: a knowledge base that grows with every document you add, and that Cl
 ┌─────────────────────────────────────────────────────────┐
 │                  CONVERSION LAYER                       │
 │                                                         │
-│  watcher.sh (runs 24/7 via launchd)                    │
+│  watcher.sh — runs 24/7 as a launchd service            │
 │                                                         │
 │  1. Validates file (type, size, no symlinks)            │
 │  2. Converts to Markdown via markitdown (Microsoft)     │
@@ -46,31 +50,27 @@ The result: a knowledge base that grows with every document you add, and that Cl
 ┌─────────────────────────────────────────────────────────┐
 │                  CURATION LAYER                         │
 │                                                         │
-│  /odcus-kb-compile  (Claude Code skill)                 │
+│  kb-compile — Claude Code skill                         │
 │                                                         │
 │  Claude reads raw/ files and:                           │
 │  - Routes each to the right discipline folder           │
 │  - Merges new info into existing articles               │
 │  - Updates the master index                             │
 │  - Flags gaps and contradictions                        │
-│                                                         │
-│  knowledge-base/                                        │
-│    cyber/   compliance/   finops/                       │
-│    sourcing/   modernization/   ai/   managed/          │
 └─────────────────────┬───────────────────────────────────┘
                       │ structured .md articles
                       ▼
 ┌─────────────────────────────────────────────────────────┐
 │                   SEARCH LAYER                          │
 │                                                         │
-│  QMD — local semantic search MCP server                 │
+│  QMD (@tobilu/qmd) — local semantic search MCP server   │
 │                                                         │
-│  Indexes all articles. In any Claude Code session,      │
-│  Claude queries the KB automatically:                   │
+│  Indexes all articles. Claude queries the KB            │
+│  automatically in every session — no manual lookup.     │
 │                                                         │
-│  - BM25 (keyword)                                       │
-│  - Vector (semantic)                                    │
-│  - HyDE (hypothetical document)                         │
+│  - BM25 keyword search                                  │
+│  - Vector / semantic search                             │
+│  - HyDE (hypothetical document embeddings)             │
 │                                                         │
 │  No data leaves your machine.                           │
 └─────────────────────────────────────────────────────────┘
@@ -82,108 +82,114 @@ The result: a knowledge base that grows with every document you add, and that Cl
 
 | Component | What it is | Role |
 |-----------|-----------|------|
-| `watcher.sh` | zsh script + launchd service | Watches drop folder, converts files to Markdown |
-| `markitdown` | Microsoft open-source tool | Converts PDF/DOCX/PPTX/XLSX/HTML → Markdown |
-| `fswatch` | macOS file system watcher | Triggers conversion when a new file appears |
-| `/odcus-kb-compile` | Claude Code skill | Reads raw/ and writes structured wiki articles |
-| `/odcus-kb-healthcheck` | Claude Code skill | Finds gaps, stale facts, unprocessed files |
-| `qmd` | Local MCP search server | Indexes markdown, serves semantic search to Claude |
-| Obsidian | Markdown editor + sync | Readable interface for the knowledge base |
+| [`pipeline/watcher.sh`](pipeline/watcher.sh) | zsh script | Watches drop folder, converts files, archives originals |
+| [`pipeline/*.plist`](pipeline/) | launchd config | Keeps watcher running 24/7, restarts on crash |
+| [markitdown](https://github.com/microsoft/markitdown) | Microsoft OSS tool | Converts PDF/DOCX/PPTX/XLSX/HTML → Markdown |
+| [fswatch](https://github.com/emcrisostomo/fswatch) | macOS file watcher | Fires events when new files appear |
+| [`skills/kb-compile`](skills/kb-compile/SKILL.md) | Claude Code skill | Reads raw/, writes structured wiki articles |
+| [`skills/kb-healthcheck`](skills/kb-healthcheck/SKILL.md) | Claude Code skill | Audits wiki for gaps, stale data, orphans |
+| [@tobilu/qmd](https://github.com/toblu/qmd) | Local MCP server | Indexes markdown, exposes semantic search to Claude |
 
 ---
 
 ## Reference folder layout
 
-Adapt these paths to your own environment. The three locations that matter are: drop zone, raw intake, and archive.
-
 ```
-Drop zone (any synced or local folder)
-├── incoming/         ← drop files here
-└── archive/          ← originals moved here after conversion
+drop-zone/          ← you put files here (any folder or cloud sync)
+archive/            ← originals moved here after conversion
 
-Knowledge base (Obsidian vault or any folder)
-└── knowledge-base/
-    ├── raw/          ← converted .md files land here
-    ├── cyber/        ← curated wiki: cybersecurity
-    ├── compliance/   ← curated wiki: compliance & regulation
-    ├── finops/       ← curated wiki: cloud cost management
-    ├── sourcing/     ← curated wiki: vendor & procurement
-    ├── modernization/← curated wiki: legacy & cloud migration
-    ├── ai/           ← curated wiki: AI adoption & governance
-    ├── managed/      ← curated wiki: managed services
-    ├── references/   ← source PDFs and reference files
-    └── _index.md     ← master index, auto-maintained
+knowledge-base/
+├── raw/            ← converted .md files land here
+│   ├── articles/   ← web clips, industry articles
+│   ├── competitors/← competitor intelligence
+│   ├── clients/    ← client notes, meeting summaries
+│   ├── industry/   ← vertical-specific research
+│   ├── research/   ← papers, external reports
+│   └── _index.md   ← log of pending / compiled files
+│
+├── [discipline-1]/ ← curated wiki articles (you define these)
+├── [discipline-2]/
+├── [discipline-3]/
+├── references/     ← source PDFs and reference files
+└── _index.md       ← master wiki index
 ```
 
-The drop zone and archive can be the same cloud storage provider, or entirely separate. The knowledge base should live somewhere that syncs across devices (iCloud, Dropbox, etc.) so it's accessible wherever you run Claude Code.
+The knowledge base folder should live somewhere that syncs across devices — Obsidian vault (iCloud), Dropbox, or similar.
 
 ---
 
 ## Day-to-day usage
 
 **Adding knowledge:**
-1. Drop a file into your drop zone
-2. Wait a few seconds — it converts automatically
-3. Open Claude Code, run `/odcus-kb-compile`
-4. Done. The article is in the wiki and searchable.
+1. Drop any supported file into your drop zone
+2. It converts to Markdown automatically within seconds
+3. Open Claude Code, run `/kb-compile`
+4. Done — the article is in the wiki and searchable
 
 **Querying the knowledge base:**
-- Just ask Claude in any session: "what do we know about NIS2 for Swiss manufacturers?"
-- Claude searches QMD automatically and pulls relevant passages
+- Ask Claude anything in any session: "what do we know about X?"
+- Claude searches QMD automatically and grounds its response in your KB
 
 **Maintenance:**
-- Run `/odcus-kb-healthcheck` occasionally to find gaps, stale entries, and unprocessed files
+- Run `/kb-healthcheck` periodically to find gaps, stale entries, and unprocessed files
+
+---
+
+## Setup overview
+
+Full guides for each component are in `docs/`:
+
+| Step | Guide |
+|------|-------|
+| 1. Understand the philosophy | [docs/philosophy.md](docs/philosophy.md) |
+| 2. Install the conversion pipeline | [docs/pipeline-setup.md](docs/pipeline-setup.md) |
+| 3. Install and configure QMD | [docs/qmd-setup.md](docs/qmd-setup.md) |
+| 4. Install the Claude Code skills | [docs/skills-setup.md](docs/skills-setup.md) |
+| 5. Troubleshoot | [docs/troubleshooting.md](docs/troubleshooting.md) |
+
+Quick start if you want to jump straight in:
+
+```bash
+# 1. Install dependencies
+brew install fswatch
+curl -LsSf https://astral.sh/uv/install.sh | sh   # for uvx / markitdown
+curl -fsSL https://bun.sh/install | bash            # for bun / qmd
+
+# 2. Install QMD
+bun install -g @tobilu/qmd
+
+# 3. Set up the watcher
+mkdir -p ~/.local/bin ~/.local/logs
+cp pipeline/watcher.sh ~/.local/bin/knowhow-watcher.sh
+chmod +x ~/.local/bin/knowhow-watcher.sh
+# Edit WATCH_DIR, OUTPUT_DIR, ARCHIVE_DIR at the top of the script
+
+# 4. Install the launchd service
+cp pipeline/com.odcus.knowhow-watcher.plist ~/Library/LaunchAgents/
+sed -i '' 's/YOUR_USERNAME/'"$(whoami)"'/g' ~/Library/LaunchAgents/com.odcus.knowhow-watcher.plist
+launchctl load ~/Library/LaunchAgents/com.odcus.knowhow-watcher.plist
+
+# 5. Add QMD to Claude Code MCP config (~/.mcp.json)
+# See docs/qmd-setup.md
+
+# 6. Install the skills
+# See docs/skills-setup.md
+```
 
 ---
 
 ## Philosophy
 
-The system is built on two ideas:
+Built on two ideas — one about how knowledge should be maintained, one about how it should be accessed.
 
-**Karpathy-style KB** — Andrej Karpathy's approach to knowledge management: the AI is the librarian, not you. You collect raw material. The AI reads, structures, and maintains the wiki. You never edit articles directly.
+**Karpathy-style KB** — Andrej Karpathy's approach: the AI is the librarian, not you. You collect raw material. The AI reads, structures, and maintains the wiki. You never edit articles directly. The system grows without maintenance overhead.
 
-**QMD by Tobi Lütke** — Shopify's CEO on AI-augmented work: documents should be *queryable*, not just *searchable*. QMD makes your markdown knowledge base queryable with the same semantics as a database, accessible to Claude in real time.
+**QMD by Tobi Lütke** — Shopify's CEO built `@tobilu/qmd`: documents should be *queryable*, not just *searchable*. QMD makes your markdown knowledge base queryable with three modes (BM25, vector, HyDE), accessible to Claude in real time through the MCP protocol.
 
 Full details: [docs/philosophy.md](docs/philosophy.md)
 
 ---
 
-## Documentation
+## License
 
-| Doc | Contents |
-|-----|---------|
-| [docs/philosophy.md](docs/philosophy.md) | The ideas behind the system |
-| [docs/qmd-setup.md](docs/qmd-setup.md) | Installing and configuring QMD |
-| [docs/pipeline-setup.md](docs/pipeline-setup.md) | Full pipeline installation guide |
-| [docs/troubleshooting.md](docs/troubleshooting.md) | Common issues and fixes |
-| [pipeline/watcher.sh](pipeline/watcher.sh) | The file watcher script |
-| [pipeline/com.odcus.knowhow-watcher.plist](pipeline/com.odcus.knowhow-watcher.plist) | launchd service config |
-
----
-
-## Quick start
-
-```bash
-# 1. Install dependencies
-brew install fswatch
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# 2. Copy and configure the watcher script
-mkdir -p ~/.local/bin
-cp pipeline/watcher.sh ~/.local/bin/knowhow-watcher.sh
-chmod +x ~/.local/bin/knowhow-watcher.sh
-# Edit WATCH_DIR, OUTPUT_DIR, ARCHIVE_DIR at the top of the script
-
-# 3. Install the background service
-cp pipeline/com.odcus.knowhow-watcher.plist ~/Library/LaunchAgents/
-# Replace YOUR_USERNAME with your macOS username in the plist
-launchctl load ~/Library/LaunchAgents/com.odcus.knowhow-watcher.plist
-
-# 4. Configure QMD (see docs/qmd-setup.md)
-
-# 5. Verify
-launchctl list | grep odcus
-tail -f ~/.local/logs/knowhow-watcher.log
-```
-
-Full instructions: [docs/pipeline-setup.md](docs/pipeline-setup.md)
+MIT — see [LICENSE](LICENSE)

@@ -1,23 +1,29 @@
 # QMD Setup
 
-QMD (Query Markdown Documents) is a local MCP server that indexes your markdown knowledge base and gives Claude three search modes — keyword, semantic, and hypothetical — to query it in any session. No data leaves your machine.
+QMD (`@tobilu/qmd`) is a local semantic search tool and MCP server built by Tobi Lütke (CEO of Shopify). It indexes your markdown knowledge base and exposes three search modes — keyword, semantic, and hypothetical — that Claude can call automatically in any session.
+
+Everything runs locally. No data leaves your machine.
 
 ---
 
 ## What it does
 
-When Claude is working on a task and needs to check the knowledge base, it calls QMD tools automatically. You don't need to point Claude at specific files or tell it what to search for — it queries the collection based on what's relevant to the current task.
+When Claude works on a task and needs to check the knowledge base, it calls QMD tools automatically through the MCP protocol. You don't point Claude at specific files — it queries the collection based on what's relevant.
 
-Example: you ask Claude to prepare a client briefing on NIS2. Without QMD, Claude works from its training data. With QMD, it first searches the knowledge base, finds your curated articles on NIS2, ISO 27001, and relevant regulatory requirements, and incorporates that specific knowledge into the briefing.
-
-The difference is the difference between generic and specific.
+Example: you ask Claude to summarize what you know about a topic. Without QMD, it works from training data alone. With QMD, it first searches your knowledge base, finds your curated articles, and incorporates that specific knowledge into the response.
 
 ---
 
 ## Prerequisites
 
-- Claude Code (CLI or desktop app)
-- A folder of markdown files to index
+- [Bun](https://bun.sh) — the JavaScript runtime QMD runs on
+- [Claude Code](https://claude.ai/code) — CLI or desktop
+
+Install Bun if you don't have it:
+
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
 
 ---
 
@@ -25,10 +31,8 @@ The difference is the difference between generic and specific.
 
 ### Step 1 — Install QMD
 
-QMD runs as a standalone process managed by Claude Code's MCP layer. Install via npm:
-
 ```bash
-npm install -g @qmd/server
+bun install -g @tobilu/qmd
 ```
 
 Verify:
@@ -37,135 +41,185 @@ Verify:
 qmd --version
 ```
 
-### Step 2 — Configure as an MCP server
+### Step 2 — Add your knowledge base as a collection
 
-Add QMD to your Claude Code MCP config. Use `~/.mcp.json` for global access across all projects, or your project's `.mcp.json` for project-scoped access:
+```bash
+qmd collection add my-knowhow /absolute/path/to/knowledge-base
+```
+
+Replace `my-knowhow` with whatever name you want and the path with your actual knowledge base folder. The name is what you'll use in queries and MCP config.
+
+Verify the collection was added:
+
+```bash
+qmd collection list
+```
+
+### Step 3 — Build the initial index
+
+```bash
+qmd update
+qmd embed
+```
+
+`qmd update` indexes file content (BM25). `qmd embed` generates vector embeddings for semantic search. Both are needed for full functionality.
+
+This takes a few seconds for small knowledge bases and longer for hundreds of articles.
+
+### Step 4 — Configure as an MCP server
+
+Add QMD to your Claude Code MCP configuration. Edit `~/.mcp.json` (global, all projects) or your project's `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "qmd": {
       "command": "qmd",
-      "args": ["serve"],
-      "env": {
-        "QMD_COLLECTIONS": "my-knowhow:/absolute/path/to/knowledge-base"
-      }
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-Replace `/absolute/path/to/knowledge-base` with the full path to your knowledge base folder.
+If `qmd` isn't in your `PATH`, use the full binary path. Find it with:
 
-**Examples:**
-
-iCloud / Obsidian vault:
-```
-/Users/yourname/Library/Mobile Documents/iCloud~md~obsidian/Documents/Vault/knowledge-base
+```bash
+which qmd
 ```
 
-Local folder:
-```
-/Users/yourname/Documents/knowledge-base
-```
+Then use that path in the config:
 
-**Multiple collections** — separate with a comma:
 ```json
-"QMD_COLLECTIONS": "knowhow:/path/to/kb,research:/path/to/research"
+{
+  "mcpServers": {
+    "qmd": {
+      "command": "/Users/yourname/.bun/bin/qmd",
+      "args": ["mcp"]
+    }
+  }
+}
 ```
 
-### Step 3 — Restart Claude Code
+### Step 5 — Restart Claude Code
 
-MCP servers load at startup. Restart Claude Code after editing the config. QMD indexes your collection on first run.
+MCP servers load at startup. Restart Claude Code after editing the config.
 
-### Step 4 — Verify
+### Step 6 — Verify
 
 In a Claude Code session:
 
 ```
-Search the knowhow collection for "Zero Trust"
+Search the my-knowhow collection for "your topic"
 ```
 
-If QMD is running, Claude returns matching passages from your knowledge base.
+Claude should return matching passages from your knowledge base.
 
 ---
 
 ## Search modes
 
-QMD exposes three search modes. Claude selects the appropriate one automatically, but you can also request a specific mode.
+QMD exposes three search modes. Claude selects the appropriate one, but you can also request a specific mode explicitly.
 
 ### BM25 — keyword search
 
-Best for: exact terms, proper nouns, standards identifiers (NIS2, ISO 27001, GDPR)
+Best for: exact terms, proper nouns, identifiers, standards names
 
 Fast and deterministic. If the term is in the knowledge base, BM25 finds it.
 
+```
+Search my-knowhow for "GDPR Article 17"
+```
+
 ### Vector search — semantic
 
-Best for: concepts, questions, open-ended queries
+Best for: concepts, open-ended questions, anything where exact words don't matter
 
-Text is embedded into vector space. Finds passages whose *meaning* is close to the query — even when no exact words match. "IT cost reduction" will match articles about cloud FinOps, SaaS rationalization, and license management.
+Embeds text as vectors. Finds passages whose *meaning* is close to the query, even with no word overlap. "How do we reduce software costs?" will match articles about SaaS rationalization, license management, and cloud FinOps.
 
-### HyDE — hypothetical document
+```
+What does the knowledge base say about reducing software spend?
+```
+
+### HyDE — hypothetical document embeddings
 
 Best for: complex queries where precision matters most
 
-QMD generates a short hypothetical answer to the query, then uses that as the search vector. Because the hypothetical mirrors the style of real knowledge base articles, the semantic match is more precise. Slower than the other modes.
+QMD generates a short hypothetical answer, then uses that as the search vector. Because the hypothetical mirrors the vocabulary of real knowledge base articles, matches are more precise. Slower than the other modes.
 
-### Combined search (recommended)
+### Combined query (default for complex topics)
 
-For best results, combine all three:
-
-```json
-[
-  {"type": "lex", "query": "NIS2"},
-  {"type": "vec", "query": "regulatory compliance Swiss manufacturers"},
-  {"type": "hyde", "query": "what NIS2 means for SMEs in manufacturing"}
-]
-```
-
-Claude does this automatically for complex topics.
-
----
-
-## Knowledge base structure
-
-Each article is one markdown file covering one topic. QMD indexes all of them and returns passage-level results — not whole documents — which keeps Claude's context window lean even as the knowledge base grows.
-
-Recommended structure:
-
-```
-knowledge-base/
-├── cyber/            ← cybersecurity topics
-├── compliance/       ← regulatory & compliance topics
-├── finops/           ← cloud cost & SaaS management
-├── sourcing/         ← vendor selection & procurement
-├── modernization/    ← cloud migration & legacy systems
-├── ai/               ← AI adoption & governance
-├── managed/          ← managed services & SLAs
-├── raw/              ← intake: converted files land here
-└── _index.md         ← master index
-```
-
-Adapt discipline folders to your domain. The structure itself doesn't affect how QMD indexes — it indexes all `.md` files recursively.
-
----
-
-## Re-indexing
-
-QMD watches its collection folder and re-indexes automatically when files change. After running `/odcus-kb-compile`, new articles are available for search within seconds.
-
-Manual re-index if needed:
+QMD's `query` command combines all three automatically:
 
 ```bash
-qmd reindex my-knowhow
+qmd query "your question here"
+```
+
+Claude does this automatically when the query is complex.
+
+---
+
+## Re-indexing after compile
+
+After running `/kb-compile` (which writes new articles to your discipline folders), update the QMD index:
+
+```bash
+qmd update
+qmd embed
+```
+
+Or run both in sequence:
+
+```bash
+qmd update && qmd embed
+```
+
+The compile skill does this automatically as its final step — so in normal usage you don't need to run it manually.
+
+---
+
+## Useful commands
+
+```bash
+# Check index health
+qmd status
+
+# List indexed files in a collection
+qmd collection show my-knowhow
+
+# Search from the terminal
+qmd query "your question"
+qmd search "exact keyword"    # BM25 only
+qmd vsearch "your question"   # vector only
+
+# Fetch a specific file
+qmd get knowledge-base/cyber/zero-trust.md
+
+# Re-index
+qmd update        # re-index content
+qmd embed         # regenerate vector embeddings
+qmd embed -f      # force regenerate all embeddings
+
+# Clean up caches
+qmd cleanup
 ```
 
 ---
 
-## Checking index status
+## Multiple collections
+
+You can index multiple folders as separate collections:
 
 ```bash
-qmd status           # list collections and document counts
-qmd list my-knowhow  # show what's indexed
+qmd collection add work-kb /path/to/work-knowledge
+qmd collection add personal-kb /path/to/personal-notes
 ```
+
+Each collection is searchable independently. Useful if you want to keep different knowledge bases separated while still querying them from Claude Code.
+
+---
+
+## Notes
+
+- QMD stores its index locally in `~/.qmd/` — no cloud sync required
+- Vector embeddings are generated locally using a bundled model
+- The MCP server starts on demand when Claude Code calls a QMD tool — it does not run as a persistent background process
