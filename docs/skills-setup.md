@@ -4,6 +4,8 @@ The two Claude Code skills — `kb-compile` and `kb-healthcheck` — are the cur
 
 Skills are prompt files that Claude Code loads when you invoke a slash command. They live in `~/.claude/skills/` and are triggered by running `/skill-name` in any session.
 
+> **Security note:** Skills execute shell commands with your user permissions. Review `SKILL.md` files before installing them, and do not sync skills from untrusted sources. The skills in this repo only run `qmd update` and `qmd embed` — review those lines if you want to verify.
+
 ---
 
 ## Installing the skills
